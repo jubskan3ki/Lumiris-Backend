@@ -1,7 +1,9 @@
 package com.minoh.lumiris_backend.dto.in;
 
+import jakarta.validation.constraints.Size;
+
 public record CertificationRequest(
-        String name,
-        String customName,
-        String licenseNumber
+        @Size(max = 255) String name,
+        @Size(max = 255) String customName,
+        @Size(max = 255) String licenseNumber
 ) {}

@@ -30,6 +30,8 @@ public class SecurityConfig {
 
     private static final String[] PUBLIC_URLS = {
         "/api/auth/**",
+        // Stripe → server webhook: unauthenticated, secured by HMAC signature verification.
+        "/api/stripe/webhook",
         "/swagger-ui/**",
         "/swagger-ui.html",
         "/v3/api-docs/**",

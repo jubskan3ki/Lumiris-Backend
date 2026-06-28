@@ -16,7 +16,6 @@ import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -35,6 +34,9 @@ class DppFormServiceTest {
     @Mock
     private UserRepository userRepository;
 
+    @Mock
+    private QuotaService quotaService;
+
     @Spy
     private DppFormMapper dppFormMapper;
 
@@ -50,7 +52,7 @@ class DppFormServiceTest {
         user.setId(UUID.randomUUID());
         user.setEmail(USER_EMAIL);
 
-        lenient().when(userRepository.findByEmail(USER_EMAIL)).thenReturn(Optional.of(user));
+        lenient().when(userRepository.getByEmail(USER_EMAIL)).thenReturn(user);
         lenient().when(dppFormRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
     }
 
@@ -103,7 +105,8 @@ class DppFormServiceTest {
 
     @Test
     void create_shouldThrowWhenUserNotFound() {
-        when(userRepository.findByEmail("unknown@test.com")).thenReturn(Optional.empty());
+        when(userRepository.getByEmail("unknown@test.com"))
+                .thenThrow(new ResourceNotFoundException("User not found"));
 
         assertThatThrownBy(() -> service.create(null, "unknown@test.com"))
                 .isInstanceOf(ResourceNotFoundException.class);

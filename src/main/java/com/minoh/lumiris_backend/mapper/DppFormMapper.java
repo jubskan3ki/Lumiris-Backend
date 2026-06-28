@@ -27,6 +27,9 @@ public class DppFormMapper {
     public DppForm toEntity(DppFormRequest request, User user) {
         DppForm form = new DppForm();
         form.setUser(user);
+        if (request == null) {
+            return form;
+        }
         form.setProductName(request.productName());
         form.setProductDescription(request.productDescription());
         form.setProductCategory(request.productCategory());
@@ -44,38 +47,51 @@ public class DppFormMapper {
         form.setAvailableSizes(request.availableSizes());
         form.setColors(request.colors());
 
-        if (request.materials() != null) {
-            request.materials().forEach(m -> {
-                DppMaterial material = new DppMaterial();
-                material.setDppForm(form);
-                material.setFiber(m.fiber());
-                material.setPercentage(m.percentage());
-                material.setOriginCountry(m.originCountry());
-                form.getMaterials().add(material);
-            });
-        }
-
-        if (request.careInstructions() != null) {
-            request.careInstructions().forEach(code -> {
-                DppCareInstruction care = new DppCareInstruction();
-                care.setDppForm(form);
-                care.setCareCode(code);
-                form.getCareInstructions().add(care);
-            });
-        }
-
-        if (request.certifications() != null) {
-            request.certifications().forEach(c -> {
-                DppCertification cert = new DppCertification();
-                cert.setDppForm(form);
-                cert.setName(c.name());
-                cert.setCustomName(c.customName());
-                cert.setLicenseNumber(c.licenseNumber());
-                form.getCertifications().add(cert);
-            });
-        }
+        addMaterials(form, request);
+        addCareInstructions(form, request);
+        addCertifications(form, request);
 
         return form;
+    }
+
+    private void addMaterials(DppForm form, DppFormRequest request) {
+        if (request.materials() == null) {
+            return;
+        }
+        request.materials().forEach(m -> {
+            DppMaterial material = new DppMaterial();
+            material.setDppForm(form);
+            material.setFiber(m.fiber());
+            material.setPercentage(m.percentage());
+            material.setOriginCountry(m.originCountry());
+            form.getMaterials().add(material);
+        });
+    }
+
+    private void addCareInstructions(DppForm form, DppFormRequest request) {
+        if (request.careInstructions() == null) {
+            return;
+        }
+        request.careInstructions().forEach(code -> {
+            DppCareInstruction care = new DppCareInstruction();
+            care.setDppForm(form);
+            care.setCareCode(code);
+            form.getCareInstructions().add(care);
+        });
+    }
+
+    private void addCertifications(DppForm form, DppFormRequest request) {
+        if (request.certifications() == null) {
+            return;
+        }
+        request.certifications().forEach(c -> {
+            DppCertification cert = new DppCertification();
+            cert.setDppForm(form);
+            cert.setName(c.name());
+            cert.setCustomName(c.customName());
+            cert.setLicenseNumber(c.licenseNumber());
+            form.getCertifications().add(cert);
+        });
     }
 
     public DppFormResponse toResponse(DppForm form) {

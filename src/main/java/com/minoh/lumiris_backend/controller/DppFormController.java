@@ -1,17 +1,20 @@
 package com.minoh.lumiris_backend.controller;
 
+import com.minoh.lumiris_backend.config.security.CurrentUserEmail;
 import com.minoh.lumiris_backend.dto.in.DppFormRequest;
 import com.minoh.lumiris_backend.dto.out.DppFormResponse;
 import com.minoh.lumiris_backend.dto.out.DppFormSummaryResponse;
 import com.minoh.lumiris_backend.service.DppFormService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -23,25 +26,26 @@ public class DppFormController {
 
     @PostMapping
     ResponseEntity<DppFormResponse> create(
-            @RequestBody(required = false) DppFormRequest request,
-            @AuthenticationPrincipal UserDetails principal
+            @Valid @RequestBody(required = false) DppFormRequest request,
+            @CurrentUserEmail String email
     ) {
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(dppFormService.create(request, principal.getUsername()));
+                .body(dppFormService.create(request, email));
     }
 
     @GetMapping
-    ResponseEntity<List<DppFormSummaryResponse>> findAll(
-            @AuthenticationPrincipal UserDetails principal
+    ResponseEntity<Page<DppFormSummaryResponse>> findAll(
+            @PageableDefault(size = 50, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable,
+            @CurrentUserEmail String email
     ) {
-        return ResponseEntity.ok(dppFormService.findAllByUser(principal.getUsername()));
+        return ResponseEntity.ok(dppFormService.findAllByUser(email, pageable));
     }
 
     @GetMapping("/{id}")
     ResponseEntity<DppFormResponse> findById(
             @PathVariable UUID id,
-            @AuthenticationPrincipal UserDetails principal
+            @CurrentUserEmail String email
     ) {
-        return ResponseEntity.ok(dppFormService.findById(id, principal.getUsername()));
+        return ResponseEntity.ok(dppFormService.findById(id, email));
     }
 }

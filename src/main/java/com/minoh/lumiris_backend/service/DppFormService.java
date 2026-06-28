@@ -11,10 +11,11 @@ import com.minoh.lumiris_backend.repository.DppFormRepository;
 import com.minoh.lumiris_backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.hibernate.Hibernate;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -24,48 +25,45 @@ public class DppFormService {
     private final DppFormRepository dppFormRepository;
     private final UserRepository userRepository;
     private final DppFormMapper dppFormMapper;
+    private final QuotaService quotaService;
 
     @Transactional
     public DppFormResponse create(DppFormRequest request, String userEmail) {
-        User user = userRepository.findByEmail(userEmail)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        User user = userRepository.getByEmail(userEmail);
 
-        DppFormRequest r = request != null ? request : emptyRequest();
-        DppForm form = dppFormMapper.toEntity(r, user);
+        // Gate: requires an active passport-granting subscription within quota.
+        quotaService.assertCanCreate(user);
+
+        DppForm form = dppFormMapper.toEntity(request, user);
         DppForm saved = dppFormRepository.save(form);
         return dppFormMapper.toResponse(saved);
     }
 
     @Transactional(readOnly = true)
-    public List<DppFormSummaryResponse> findAllByUser(String userEmail) {
-        User user = userRepository.findByEmail(userEmail)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
-        return dppFormRepository.findByUserId(user.getId()).stream()
-                .map(dppFormMapper::toSummaryResponse)
-                .toList();
+    public Page<DppFormSummaryResponse> findAllByUser(String userEmail, Pageable pageable) {
+        User user = userRepository.getByEmail(userEmail);
+        return dppFormRepository.findByUserId(user.getId(), pageable)
+                .map(dppFormMapper::toSummaryResponse);
     }
 
     @Transactional(readOnly = true)
     public DppFormResponse findById(UUID id, String userEmail) {
-        User user = userRepository.findByEmail(userEmail)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        User user = userRepository.getByEmail(userEmail);
         DppForm form = dppFormRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("DPP not found"));
         if (!form.getUser().getId().equals(user.getId())) {
             throw new ResourceNotFoundException("DPP not found");
         }
-        Hibernate.initialize(form.getMaterials());
-        Hibernate.initialize(form.getCareInstructions());
-        Hibernate.initialize(form.getCertifications());
+        initializeChildCollections(form);
         return dppFormMapper.toResponse(form);
     }
 
-    private static DppFormRequest emptyRequest() {
-        return new DppFormRequest(
-                null, null, null, null, null, null, null,
-                null, null, null,
-                null, null, null, null, null,
-                null, null, null, null
-        );
+    // The three @OneToMany List (bag) collections can't be fetch-joined in a single query
+    // (Hibernate MultipleBagFetchException), so we initialise each explicitly. They are small,
+    // bounded child collections of one DPP.
+    private void initializeChildCollections(DppForm form) {
+        Hibernate.initialize(form.getMaterials());
+        Hibernate.initialize(form.getCareInstructions());
+        Hibernate.initialize(form.getCertifications());
     }
 }
