@@ -8,7 +8,9 @@ import com.minoh.lumiris_backend.dto.out.DppFormSummaryResponse;
 import com.minoh.lumiris_backend.entity.*;
 import org.springframework.stereotype.Component;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @Component
 public class DppFormMapper {
@@ -100,7 +102,34 @@ public class DppFormMapper {
                 form.getWarrantyDescription(),
                 form.getIsRepairable(),
                 form.getEndOfLifeInstructions(),
+                form.getDataHash(),
                 documents
         );
+    }
+
+    public Map<String, Object> toHashableData(DppForm dppForm) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("productName", dppForm.getProductName());
+        data.put("productDescription", dppForm.getProductDescription());
+        data.put("productCategory", dppForm.getProductCategory());
+        data.put("originCountry", dppForm.getOriginCountry());
+        data.put("availableSizes", dppForm.getAvailableSizes());
+        data.put("colors", dppForm.getColors());
+        data.put("manufacturedAt", dppForm.getManufacturedAt());
+        data.put("batchNumber", dppForm.getBatchNumber());
+        data.put("gtin", dppForm.getGtin());
+        data.put("sku", dppForm.getSku());
+        data.put("reachCompliant", dppForm.getReachCompliant());
+        data.put("recycledPct", dppForm.getRecycledPct());
+        data.put("warrantyDescription", dppForm.getWarrantyDescription());
+        data.put("isRepairable", dppForm.getIsRepairable());
+        data.put("endOfLifeInstructions", dppForm.getEndOfLifeInstructions());
+        data.put("materials", dppForm.getMaterials().stream()
+                .map(m -> Map.of("fiber", m.getFiber(), "percentage", m.getPercentage(), "originCountry", String.valueOf(m.getOriginCountry())))
+                .toList());
+        data.put("careInstructions", dppForm.getCareInstructions().stream()
+                .map(c -> Map.of("careCode", c.getCareCode()))
+                .toList());
+        return data;
     }
 }

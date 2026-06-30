@@ -14,6 +14,7 @@ import com.minoh.lumiris_backend.repository.UserRepository;
 import com.minoh.lumiris_backend.service.scoring.IrisScoreCalculator;
 import org.springframework.transaction.support.TransactionCallback;
 import org.springframework.transaction.support.TransactionTemplate;
+import com.minoh.lumiris_backend.util.DppHashUtil;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -24,6 +25,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -61,6 +63,9 @@ class DppFormServiceTest {
     @Spy
     private DppFormMapper dppFormMapper;
 
+    @Mock
+    private DppHashUtil dppHashUtil;
+
     @InjectMocks
     private DppFormService service;
 
@@ -89,6 +94,7 @@ class DppFormServiceTest {
             TransactionCallback<?> callback = inv.getArgument(0);
             return callback.doInTransaction(null);
         });
+        lenient().when(dppHashUtil.generateDppHash(any(Map.class))).thenReturn("abc123fakehash");
     }
 
     @Test

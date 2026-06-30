@@ -9,6 +9,9 @@ import com.minoh.lumiris_backend.dto.out.DppFormResponse;
 import com.minoh.lumiris_backend.dto.out.DppFormSummaryResponse;
 import com.minoh.lumiris_backend.dto.out.IrisScoreResponse;
 import com.minoh.lumiris_backend.entity.*;
+import com.minoh.lumiris_backend.dto.out.DppVerificationResponse;
+import com.minoh.lumiris_backend.entity.DppForm;
+import com.minoh.lumiris_backend.entity.User;
 import com.minoh.lumiris_backend.exception.ResourceNotFoundException;
 import com.minoh.lumiris_backend.mapper.DppFormMapper;
 import com.minoh.lumiris_backend.repository.DppFormRepository;
@@ -16,6 +19,7 @@ import com.minoh.lumiris_backend.repository.IrisScoreRepository;
 import com.minoh.lumiris_backend.repository.StoredFileRepository;
 import com.minoh.lumiris_backend.repository.UserRepository;
 import com.minoh.lumiris_backend.service.scoring.IrisScoreCalculator;
+import com.minoh.lumiris_backend.util.DppHashUtil;
 import lombok.RequiredArgsConstructor;
 import org.hibernate.Hibernate;
 import org.springframework.stereotype.Service;
@@ -48,6 +52,7 @@ public class DppFormService {
     private final DppFormMapper dppFormMapper;
     private final IrisScoreCalculator irisScoreCalculator;
     private final TransactionTemplate transactionTemplate;
+    private final DppHashUtil dppHashUtil;
 
     public DppFormCreatedResponse create(DppFormRequest request, Map<String, MultipartFile> files, String userEmail) {
         Map<String, UUID> uploadedIds = new LinkedHashMap<>();
@@ -63,6 +68,7 @@ public class DppFormService {
 
             DppForm form = dppFormMapper.toEntity(request, user);
             form.setPublicCode(generateUniquePublicCode());
+            form.setDataHash(dppHashUtil.generateDppHash(dppFormMapper.toHashableData(form)));
 
             uploadedIds.forEach((partName, fileId) -> {
                 StoredFile storedFile = storedFileRepository.getReferenceById(fileId);
@@ -223,5 +229,15 @@ public class DppFormService {
             code = sb.toString();
         } while (dppFormRepository.existsByPublicCode(code));
         return code;
+    }
+
+    public DppVerificationResponse verify(UUID id) {
+        DppForm dppForm = dppFormRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("DPP form not found: " + id));
+
+        String recomputedHash = dppHashUtil.generateDppHash(dppFormMapper.toHashableData(dppForm));
+        boolean verified = recomputedHash.equals(dppForm.getDataHash());
+
+        return new DppVerificationResponse(dppForm.getId(), verified, dppForm.getDataHash(), recomputedHash);
     }
 }

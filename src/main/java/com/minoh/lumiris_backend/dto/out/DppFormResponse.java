@@ -35,6 +35,7 @@ public record DppFormResponse(
         String warrantyDescription,
         Boolean isRepairable,
         String endOfLifeInstructions,
+        String dataHash,
 
         List<DppFormDocumentResponse> documents
 ) {}

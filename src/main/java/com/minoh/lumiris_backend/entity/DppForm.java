@@ -81,6 +81,9 @@ public class DppForm extends Auditable {
     @JdbcTypeCode(SqlTypes.ARRAY)
     private List<String> colors;
 
+    @Column(name = "data_hash", length = 64, nullable = false)
+    private String dataHash;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "main_photo_file_id")
     private StoredFile mainPhotoFile;

@@ -88,7 +88,10 @@ class DppFormControllerTest {
 
         mockMvc.perform(multipart("/api/dpp-forms").file(dataPart))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.id").value(id.toString()));
+                .andExpect(jsonPath("$.id").value(id.toString()))
+                .andExpect(jsonPath("$.productName").value("Pull Merino"))
+                .andExpect(jsonPath("$.id").isNotEmpty())
+                .andExpect(jsonPath("$.dataHash").value("abc123hash"));
 
         verify(dppFormService).create(any(), anyMap(), eq(USER_EMAIL));
     }
