@@ -116,6 +116,13 @@
 			<optional>true</optional>
 		</dependency>
 
+		<!-- Web3j (Ethereum) -->
+		<dependency>
+			<groupId>org.web3j</groupId>
+			<artifactId>core</artifactId>
+			<version>4.12.3</version>
+		</dependency>
+
 		<!-- Tests -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>

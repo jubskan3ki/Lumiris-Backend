@@ -10,6 +10,7 @@ import com.minoh.lumiris_backend.dto.out.DppFormSummaryResponse;
 import com.minoh.lumiris_backend.dto.out.IrisScoreResponse;
 import com.minoh.lumiris_backend.entity.*;
 import com.minoh.lumiris_backend.dto.out.DppVerificationResponse;
+import com.minoh.lumiris_backend.entity.BlockchainAnchorStatus;
 import com.minoh.lumiris_backend.entity.DppForm;
 import com.minoh.lumiris_backend.entity.User;
 import com.minoh.lumiris_backend.exception.ResourceNotFoundException;
@@ -26,6 +27,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.security.SecureRandom;
 import java.util.LinkedHashMap;
@@ -53,6 +56,7 @@ public class DppFormService {
     private final IrisScoreCalculator irisScoreCalculator;
     private final TransactionTemplate transactionTemplate;
     private final DppHashUtil dppHashUtil;
+    private final BlockchainService blockchainService;
 
     public DppFormCreatedResponse create(DppFormRequest request, Map<String, MultipartFile> files, String userEmail) {
         Map<String, UUID> uploadedIds = new LinkedHashMap<>();
@@ -69,6 +73,7 @@ public class DppFormService {
             DppForm form = dppFormMapper.toEntity(request, user);
             form.setPublicCode(generateUniquePublicCode());
             form.setDataHash(dppHashUtil.generateDppHash(dppFormMapper.toHashableData(form)));
+            form.setBlockchainAnchorStatus(BlockchainAnchorStatus.PENDING);
 
             uploadedIds.forEach((partName, fileId) -> {
                 StoredFile storedFile = storedFileRepository.getReferenceById(fileId);
@@ -102,6 +107,21 @@ public class DppFormService {
                     scoreResponse.total(),
                     scoreResponse.grade()
             ));
+
+            UUID savedId = savedForm.getId();
+            String hash = savedForm.getDataHash();
+            // Fire async anchor only after the transaction commits so the row exists in DB.
+            // Falls back to direct call when no active transaction (e.g. unit tests).
+            if (TransactionSynchronizationManager.isSynchronizationActive()) {
+                TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        blockchainService.anchorAsync(savedId, hash);
+                    }
+                });
+            } else {
+                blockchainService.anchorAsync(savedId, hash);
+            }
 
             return new DppFormCreatedResponse(savedForm.getId());
         }));
@@ -232,12 +252,39 @@ public class DppFormService {
     }
 
     public DppVerificationResponse verify(UUID id) {
-        DppForm dppForm = dppFormRepository.findById(id)
+        DppForm form = dppFormRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("DPP form not found: " + id));
 
-        String recomputedHash = dppHashUtil.generateDppHash(dppFormMapper.toHashableData(dppForm));
-        boolean verified = recomputedHash.equals(dppForm.getDataHash());
+        BlockchainAnchorStatus status = form.getBlockchainAnchorStatus();
 
-        return new DppVerificationResponse(dppForm.getId(), verified, dppForm.getDataHash(), recomputedHash);
+        if (status == BlockchainAnchorStatus.PENDING) {
+            return new DppVerificationResponse(id, false, null, null,
+                    form.getBlockchainTxHash(), status, "Blockchain anchor in progress");
+        }
+
+        if (status == BlockchainAnchorStatus.FAILED) {
+            return new DppVerificationResponse(id, false, null, null,
+                    form.getBlockchainTxHash(), status, "Blockchain anchor failed");
+        }
+
+        try {
+            String blockchainHash = blockchainService.retrieveHash(form.getBlockchainTxHash());
+            String recomputedHash = dppHashUtil.generateDppHash(dppFormMapper.toHashableData(form));
+            boolean verified = recomputedHash.equals(blockchainHash);
+            return new DppVerificationResponse(id, verified, blockchainHash, recomputedHash,
+                    form.getBlockchainTxHash(), status, null);
+        } catch (Exception e) {
+            return new DppVerificationResponse(id, false, null, null,
+                    form.getBlockchainTxHash(), status, "Failed to retrieve hash from blockchain: " + e.getMessage());
+        }
+    }
+
+    private static DppFormRequest emptyRequest() {
+        return new DppFormRequest(
+                null, null, null, null, null, null, null,
+                null, null, null,
+                null, null, null, null, null,
+                null, null, null
+        );
     }
 }

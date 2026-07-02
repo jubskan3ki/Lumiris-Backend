@@ -103,6 +103,8 @@ public class DppFormMapper {
                 form.getIsRepairable(),
                 form.getEndOfLifeInstructions(),
                 form.getDataHash(),
+                form.getBlockchainAnchorStatus(),
+                form.getBlockchainTxHash(),
                 documents
         );
     }

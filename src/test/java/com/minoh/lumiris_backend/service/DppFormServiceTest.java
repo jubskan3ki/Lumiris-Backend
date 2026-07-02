@@ -66,6 +66,9 @@ class DppFormServiceTest {
     @Mock
     private DppHashUtil dppHashUtil;
 
+    @Mock
+    private BlockchainService blockchainService;
+
     @InjectMocks
     private DppFormService service;
 
