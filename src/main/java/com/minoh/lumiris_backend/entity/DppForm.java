@@ -81,6 +81,16 @@ public class DppForm extends Auditable {
     @JdbcTypeCode(SqlTypes.ARRAY)
     private List<String> colors;
 
+    @Column(name = "data_hash", length = 64, nullable = false)
+    private String dataHash;
+
+    @Column(name = "blockchain_tx_hash", length = 66)
+    private String blockchainTxHash;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "blockchain_anchor_status", nullable = false, length = 20)
+    private BlockchainAnchorStatus blockchainAnchorStatus = BlockchainAnchorStatus.PENDING;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "main_photo_file_id")
     private StoredFile mainPhotoFile;

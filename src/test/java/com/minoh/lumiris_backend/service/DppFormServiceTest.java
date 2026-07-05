@@ -3,6 +3,10 @@ package com.minoh.lumiris_backend.service;
 import com.minoh.lumiris_backend.dto.in.DppFormRequest;
 import com.minoh.lumiris_backend.dto.out.DppFormCreatedResponse;
 import com.minoh.lumiris_backend.entity.DppForm;
+import com.minoh.lumiris_backend.dto.out.DppFormResponse;
+import com.minoh.lumiris_backend.dto.out.DppVerificationResponse;
+import com.minoh.lumiris_backend.entity.BlockchainAnchorStatus;
+import com.minoh.lumiris_backend.entity.DppForm;
 import com.minoh.lumiris_backend.entity.User;
 import com.minoh.lumiris_backend.exception.ResourceNotFoundException;
 import com.minoh.lumiris_backend.mapper.DppFormMapper;
@@ -14,6 +18,7 @@ import com.minoh.lumiris_backend.repository.UserRepository;
 import com.minoh.lumiris_backend.service.scoring.IrisScoreCalculator;
 import org.springframework.transaction.support.TransactionCallback;
 import org.springframework.transaction.support.TransactionTemplate;
+import com.minoh.lumiris_backend.util.DppHashUtil;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -24,6 +29,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -61,6 +67,12 @@ class DppFormServiceTest {
     @Spy
     private DppFormMapper dppFormMapper;
 
+    @Mock
+    private DppHashUtil dppHashUtil;
+
+    @Mock
+    private BlockchainService blockchainService;
+
     @InjectMocks
     private DppFormService service;
 
@@ -89,6 +101,7 @@ class DppFormServiceTest {
             TransactionCallback<?> callback = inv.getArgument(0);
             return callback.doInTransaction(null);
         });
+        lenient().when(dppHashUtil.generateDppHash(any(Map.class))).thenReturn("abc123fakehash");
     }
 
     @Test
@@ -129,5 +142,103 @@ class DppFormServiceTest {
 
         assertThatThrownBy(() -> service.create(null, Collections.emptyMap(), "unknown@test.com"))
                 .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    // ── verify ────────────────────────────────────────────────────────────────
+
+    @Test
+    void verify_shouldReturnPending_whenAnchorInProgress() {
+        UUID id = UUID.randomUUID();
+        DppForm form = formWithStatus(id, BlockchainAnchorStatus.PENDING, null);
+        when(dppFormRepository.findById(id)).thenReturn(Optional.of(form));
+
+        DppVerificationResponse response = service.verify(id);
+
+        assertThat(response.verified()).isFalse();
+        assertThat(response.anchorStatus()).isEqualTo(BlockchainAnchorStatus.PENDING);
+        assertThat(response.blockchainHash()).isNull();
+        assertThat(response.message()).contains("progress");
+    }
+
+    @Test
+    void verify_shouldReturnFailed_whenAnchorFailed() {
+        UUID id = UUID.randomUUID();
+        DppForm form = formWithStatus(id, BlockchainAnchorStatus.FAILED, null);
+        when(dppFormRepository.findById(id)).thenReturn(Optional.of(form));
+
+        DppVerificationResponse response = service.verify(id);
+
+        assertThat(response.verified()).isFalse();
+        assertThat(response.anchorStatus()).isEqualTo(BlockchainAnchorStatus.FAILED);
+        assertThat(response.blockchainHash()).isNull();
+    }
+
+    @Test
+    void verify_shouldReturnTrue_whenHashesMatch() throws Exception {
+        UUID id = UUID.randomUUID();
+        String txHash = "0xabc123";
+        String hash = "deadbeef1234";
+
+        DppForm form = formWithStatus(id, BlockchainAnchorStatus.ANCHORED, txHash);
+        when(dppFormRepository.findById(id)).thenReturn(Optional.of(form));
+        when(blockchainService.retrieveHash(txHash)).thenReturn(hash);
+        when(dppHashUtil.generateDppHash(any())).thenReturn(hash);
+
+        DppVerificationResponse response = service.verify(id);
+
+        assertThat(response.verified()).isTrue();
+        assertThat(response.blockchainHash()).isEqualTo(hash);
+        assertThat(response.recomputedHash()).isEqualTo(hash);
+        assertThat(response.blockchainTxHash()).isEqualTo(txHash);
+        assertThat(response.message()).isNull();
+    }
+
+    @Test
+    void verify_shouldReturnFalse_whenDataWasTamperedInDb() throws Exception {
+        UUID id = UUID.randomUUID();
+        String txHash = "0xabc123";
+
+        DppForm form = formWithStatus(id, BlockchainAnchorStatus.ANCHORED, txHash);
+        when(dppFormRepository.findById(id)).thenReturn(Optional.of(form));
+        when(blockchainService.retrieveHash(txHash)).thenReturn("original-hash");
+        when(dppHashUtil.generateDppHash(any())).thenReturn("tampered-hash");
+
+        DppVerificationResponse response = service.verify(id);
+
+        assertThat(response.verified()).isFalse();
+        assertThat(response.blockchainHash()).isEqualTo("original-hash");
+        assertThat(response.recomputedHash()).isEqualTo("tampered-hash");
+    }
+
+    @Test
+    void verify_shouldThrow_whenDppNotFound() {
+        UUID id = UUID.randomUUID();
+        when(dppFormRepository.findById(id)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.verify(id))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    void verify_shouldReturnError_whenBlockchainNodeUnreachable() throws Exception {
+        UUID id = UUID.randomUUID();
+        String txHash = "0xabc123";
+
+        DppForm form = formWithStatus(id, BlockchainAnchorStatus.ANCHORED, txHash);
+        when(dppFormRepository.findById(id)).thenReturn(Optional.of(form));
+        when(blockchainService.retrieveHash(txHash)).thenThrow(new java.io.IOException("Connection refused"));
+
+        DppVerificationResponse response = service.verify(id);
+
+        assertThat(response.verified()).isFalse();
+        assertThat(response.anchorStatus()).isEqualTo(BlockchainAnchorStatus.ANCHORED);
+        assertThat(response.message()).contains("Connection refused");
+    }
+
+    private static DppForm formWithStatus(UUID id, BlockchainAnchorStatus status, String txHash) {
+        DppForm form = new DppForm();
+        form.setBlockchainAnchorStatus(status);
+        form.setBlockchainTxHash(txHash);
+        return form;
     }
 }

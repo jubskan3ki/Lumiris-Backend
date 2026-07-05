@@ -1,6 +1,7 @@
 package com.minoh.lumiris_backend.dto.out;
 
 import com.minoh.lumiris_backend.dto.in.MaterialRequest;
+import com.minoh.lumiris_backend.entity.BlockchainAnchorStatus;
 import com.minoh.lumiris_backend.entity.DppStatus;
 
 import java.time.Instant;
@@ -35,6 +36,9 @@ public record DppFormResponse(
         String warrantyDescription,
         Boolean isRepairable,
         String endOfLifeInstructions,
+        String dataHash,
+        BlockchainAnchorStatus blockchainAnchorStatus,
+        String blockchainTxHash,
 
         List<DppFormDocumentResponse> documents
 ) {}
