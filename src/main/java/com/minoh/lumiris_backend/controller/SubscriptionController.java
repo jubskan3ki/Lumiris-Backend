@@ -69,6 +69,19 @@ public class SubscriptionController {
         return ResponseEntity.ok(subscriptionService.getState(email));
     }
 
+    // Change the plan of an existing subscription in-app (no new checkout).
+    @PostMapping("/change")
+    ResponseEntity<SubscriptionStateResponse> change(
+            @Valid @RequestBody CreateSetupIntentRequest request,
+            @CurrentUserEmail String email
+    ) {
+        PlanTier tier = PlanTier.fromKey(request.tier())
+                .orElseThrow(() -> new BillingValidationException("Plan inconnu: " + request.tier()));
+        BillingCycle cycle = BillingCycle.fromKey(request.cycle());
+        subscriptionService.changePlan(email, tier, cycle);
+        return ResponseEntity.ok(subscriptionService.getState(email));
+    }
+
     @PostMapping("/portal")
     ResponseEntity<PortalResponse> portal(@CurrentUserEmail String email) {
         String url = subscriptionService.createPortalSession(email);

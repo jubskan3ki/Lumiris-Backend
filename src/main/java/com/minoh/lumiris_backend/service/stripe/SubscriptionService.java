@@ -19,12 +19,16 @@ import com.stripe.exception.StripeException;
 import com.stripe.model.Customer;
 import com.stripe.model.SetupIntent;
 import com.stripe.model.Subscription;
+import com.stripe.model.SubscriptionItem;
 import com.stripe.model.billingportal.Session;
 import com.stripe.net.RequestOptions;
 import com.stripe.param.CustomerUpdateParams;
 import com.stripe.param.SetupIntentCreateParams;
 import com.stripe.param.SubscriptionCreateParams;
+import com.stripe.param.SubscriptionUpdateParams;
 import com.stripe.param.billingportal.SessionCreateParams;
+
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -64,14 +68,12 @@ public class SubscriptionService {
         String customerId = customerService.ensureCustomer(user);
         String priceId = catalogService.priceId(tier, cycle);
         return StripeCalls.billed("Préparation du paiement impossible", () -> {
+            // Card only: no wallets/SEPA/redirect methods — explicit payment_method_types
+            // (mutually exclusive with automaticPaymentMethods).
             SetupIntentCreateParams params = SetupIntentCreateParams.builder()
                     .setCustomer(customerId)
                     .setUsage(SetupIntentCreateParams.Usage.OFF_SESSION)
-                    .setAutomaticPaymentMethods(SetupIntentCreateParams.AutomaticPaymentMethods.builder()
-                            .setEnabled(true)
-                            .setAllowRedirects(
-                                    SetupIntentCreateParams.AutomaticPaymentMethods.AllowRedirects.NEVER)
-                            .build())
+                    .addPaymentMethodType("card")
                     .putMetadata("user_id", user.getId().toString())
                     .putMetadata("tier", tier.key())
                     .putMetadata("cycle", cycle.key())
@@ -119,6 +121,51 @@ public class SubscriptionService {
             return saved;
         } catch (StripeException e) {
             throw new BillingException("Création de l'abonnement impossible: " + e.getMessage(), e);
+        }
+    }
+
+    // In-app plan change: swaps the live subscription's price (with proration), reusing the
+    // existing payment method. No new SetupIntent/checkout needed. Re-activates a subscription
+    // that was flagged to cancel at period end, since choosing a plan expresses intent to keep it.
+    public UserSubscription changePlan(String userEmail, PlanTier tier, BillingCycle cycle) {
+        properties.requireSecretKey();
+        User user = userRepository.getByEmail(userEmail);
+        UserSubscription current = subscriptionRepository.findByUserId(user.getId())
+                .filter(s -> StripeSubscriptionStatus.isLive(s.getStatus()))
+                .orElseThrow(() -> new BillingValidationException(
+                        "Aucun abonnement actif à modifier. Souscrivez d'abord un plan."));
+        String subscriptionId = current.getStripeSubscriptionId();
+        if (subscriptionId == null) {
+            throw new BillingValidationException("Abonnement Stripe introuvable pour ce compte.");
+        }
+        String newPriceId = catalogService.priceId(tier, cycle);
+        if (newPriceId.equals(current.getStripePriceId())) {
+            throw new BillingValidationException("Vous êtes déjà sur ce plan.");
+        }
+        try {
+            Subscription stripeSub = Subscription.retrieve(subscriptionId);
+            List<SubscriptionItem> items = stripeSub.getItems() != null ? stripeSub.getItems().getData() : null;
+            if (items == null || items.isEmpty()) {
+                throw new BillingException("L'abonnement Stripe n'a aucune ligne à modifier.");
+            }
+            SubscriptionUpdateParams params = SubscriptionUpdateParams.builder()
+                    .addItem(SubscriptionUpdateParams.Item.builder()
+                            .setId(items.get(0).getId())
+                            .setPrice(newPriceId)
+                            .build())
+                    .setCancelAtPeriodEnd(false)
+                    .setProrationBehavior(SubscriptionUpdateParams.ProrationBehavior.CREATE_PRORATIONS)
+                    .setPaymentBehavior(SubscriptionUpdateParams.PaymentBehavior.ALLOW_INCOMPLETE)
+                    .putMetadata("user_id", user.getId().toString())
+                    .build();
+            Subscription updated = stripeSub.update(params);
+            UserSubscription saved = syncService.persist(updated);
+            if (saved == null) {
+                throw new BillingException("La synchronisation de l'abonnement a échoué.");
+            }
+            return saved;
+        } catch (StripeException e) {
+            throw new BillingException("Changement de plan impossible: " + e.getMessage(), e);
         }
     }
 
