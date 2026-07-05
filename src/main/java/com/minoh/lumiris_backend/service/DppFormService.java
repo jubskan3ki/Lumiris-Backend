@@ -278,13 +278,4 @@ public class DppFormService {
                     form.getBlockchainTxHash(), status, "Failed to retrieve hash from blockchain: " + e.getMessage());
         }
     }
-
-    private static DppFormRequest emptyRequest() {
-        return new DppFormRequest(
-                null, null, null, null, null, null, null,
-                null, null, null,
-                null, null, null, null, null,
-                null, null, null
-        );
-    }
 }
