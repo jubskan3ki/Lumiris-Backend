@@ -1,9 +1,9 @@
 package com.minoh.lumiris_backend.exception;
 
 import com.minoh.lumiris_backend.dto.out.ErrorResponse;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.env.Environment;
+import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
@@ -16,10 +16,9 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+@Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
-
-    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     private final Environment environment;
 
@@ -104,10 +103,20 @@ public class GlobalExceptionHandler {
                 "Le service de paiement est momentanément indisponible. Veuillez réessayer plus tard.");
     }
 
+    @ExceptionHandler(DataAccessException.class)
+    @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
+    ErrorResponse handleDataAccess(DataAccessException ex) {
+        log.error("Database error", ex);
+        String message = environment.matchesProfiles("local")
+                ? "Database error: " + ex.getMostSpecificCause().getMessage()
+                : "A database error occurred";
+        return new ErrorResponse(500, message);
+    }
+
     @ExceptionHandler(Exception.class)
     @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
     ErrorResponse handleGeneric(Exception ex) {
-        log.error("Unhandled exception", ex);
+        log.error("Unexpected error", ex);
         String message = environment.matchesProfiles("local")
                 ? ex.getClass().getSimpleName() + ": " + ex.getMessage()
                 : "An unexpected error occurred";
